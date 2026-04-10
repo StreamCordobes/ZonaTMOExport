@@ -12,6 +12,19 @@
         { url: "https://zonatmo.nakamasweb.com/profile/abandoned", titulo: "Abandonado" },
     ];
 
+    // Recorre siblings después de un h5 hasta el siguiente h5
+    function getSpansAfterH5(h5El) {
+        const result = [];
+        let sibling = h5El.nextElementSibling;
+        while (sibling && sibling.tagName !== "H5") {
+            if (sibling.classList.contains("badge-transparent")) {
+                result.push(sibling.textContent.trim());
+            }
+            sibling = sibling.nextElementSibling;
+        }
+        return result;
+    }
+
     for (const lista of listas) {
         console.log(`\n📂 Procesando lista: ${lista.titulo}`);
         let page = 1;
@@ -43,6 +56,13 @@
                 }
 
                 let progreso = "0/0";
+                let demografia = "—";
+                let demografiaClase = "";
+                let tipo = "—";
+                let tipoClase = "";
+                let tituloOficial = "—";
+                let titulosAlternativos = [];
+                let sinonimos = [];
                 let intentos = 0;
                 let success = false;
 
@@ -61,6 +81,41 @@
                         const mangaHtml = await mangaRes.text();
                         const mangaDoc = new DOMParser().parseFromString(mangaHtml, "text/html");
 
+                        // Título oficial
+                        const tituloEl = mangaDoc.querySelector("h1.element-title");
+                        if (tituloEl) {
+                            // Quitar el <small> del año
+                            const small = tituloEl.querySelector("small");
+                            if (small) small.remove();
+                            tituloOficial = tituloEl.textContent.trim();
+                        }
+
+                        // Títulos alternativos y sinónimos
+                        const h5s = [...mangaDoc.querySelectorAll("h5.element-subtitle")];
+                        for (const h5 of h5s) {
+                            const texto = h5.textContent.trim();
+                            if (texto === "Títulos alternativos") {
+                                titulosAlternativos = getSpansAfterH5(h5);
+                            } else if (texto === "Sinónimos") {
+                                sinonimos = getSpansAfterH5(h5);
+                            }
+                        }
+
+                        // Demografía
+                        const demDiv = mangaDoc.querySelector(".demography");
+                        if (demDiv) {
+                            demografia = demDiv.textContent.trim();
+                            demografiaClase = [...demDiv.classList].find(c => c !== "demography") || "";
+                        }
+
+                        // Tipo
+                        const tipoEl = mangaDoc.querySelector(".book-type");
+                        if (tipoEl) {
+                            tipo = tipoEl.textContent.trim();
+                            tipoClase = [...tipoEl.classList].find(c => c.startsWith("bg-")) || "";
+                        }
+
+                        // Capítulos
                         const chapterElements = [...mangaDoc.querySelectorAll("li.upload-link")];
                         const totalCaps = new Set();
                         const leidosCaps = new Set();
@@ -68,7 +123,6 @@
                         chapterElements.forEach(el => {
                             const titleEl = el.querySelector(".btn-collapse");
                             if (!titleEl) return;
-
                             const match = titleEl.textContent.match(/Cap[íi]tulo\s+(\d+(?:\.\d+)?)/i);
                             if (match) {
                                 const numeroBase = Math.floor(parseFloat(match[1]));
@@ -84,7 +138,7 @@
                         const leidos = leidosCaps.size - (minCap === 0 && leidosCaps.has(0) ? 1 : 0);
 
                         progreso = `${leidos}/${total}`;
-                        console.log(`  ${title}: ${progreso}`);
+                        console.log(`  ${title}: ${progreso} [${demografia}] [${tipo}]`);
                         success = true;
                         await delay(1200);
 
@@ -95,7 +149,7 @@
                     }
                 }
 
-                allItems.push({ title, link, imageUrl, progreso, lista: lista.titulo });
+                allItems.push({ title, link, imageUrl, progreso, lista: lista.titulo, demografia, demografiaClase, tipo, tipoClase, tituloOficial, titulosAlternativos, sinonimos });
             }
 
             page++;
@@ -104,7 +158,6 @@
 
     console.log("Generando HTML...");
 
-    // Agrupar por lista para secciones separadas en el HTML
     const secciones = listas.map(l => ({
         titulo: l.titulo,
         items: allItems.filter(i => i.lista === l.titulo)
@@ -120,10 +173,36 @@
             body { background:#121212; color:#fff; font-family:Arial; text-align:center; }
             h1 { margin-top: 30px; }
             h2 { margin-top: 40px; color: #1e90ff; }
-            table { width:80%; margin:auto; border-collapse:collapse; background:#222; }
-            th, td { padding:10px; border:1px solid #444; }
+            table { width:90%; margin:auto; border-collapse:collapse; background:#222; }
+            th, td { padding:10px; border:1px solid #444; vertical-align:middle; }
+            td.titles { text-align:left; }
             a { color:#1e90ff; }
             img { width:60px; height:80px; }
+            .badge {
+                display: inline-block;
+                padding: 3px 10px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: bold;
+                color: #fff;
+            }
+            .title-main { font-weight: bold; font-size: 14px; }
+            .title-alt, .title-syn { font-size: 11px; color: #aaa; display: block; margin-top: 3px; }
+            .title-label { font-size: 10px; color: #666; text-transform: uppercase; margin-top: 6px; display: block; }
+            /* Género */
+            .shounen  { background: rgba(255,165,0,.75); }
+            .shoujo   { background: rgba(221,148,161,.75); }
+            .seinen   { background: rgba(255,0,0,.75); }
+            .josei    { background: rgba(128,0,128,.75); }
+            .kodomo   { background: rgba(64,224,208,.75); }
+            /* Tipo */
+            .bg-manga     { background: #7986cb; }
+            .bg-manhwa    { background: #81c784; }
+            .bg-manhua    { background: #8d6e63; }
+            .bg-novel     { background: #e57373; }
+            .bg-one_shot  { background: #f06292; }
+            .bg-doujinshi { background: #ffb74d; }
+            .bg-oel       { background: #ba68c8; }
         </style>
     </head>
     <body>
@@ -132,13 +211,25 @@
         <h2>${s.titulo} (${s.items.length})</h2>
         <table>
             <thead>
-                <tr><th>Imagen</th><th>Título</th><th>Progreso</th></tr>
+                <tr><th>Imagen</th><th>Título</th><th>Género</th><th>Tipo</th><th>Progreso</th></tr>
             </thead>
             <tbody>
                 ${s.items.map(item => `
                     <tr>
                         <td><img src="${item.imageUrl}"></td>
-                        <td><a href="${item.link}" target="_blank">${item.title}</a></td>
+                        <td class="titles">
+                            <span class="title-main"><a href="${item.link}" target="_blank">${item.tituloOficial}</a></span>
+                            ${item.titulosAlternativos.length > 0 ? `
+                                <span class="title-label">Títulos alternativos</span>
+                                ${item.titulosAlternativos.map(t => `<span class="title-alt">• ${t}</span>`).join("")}
+                            ` : ""}
+                            ${item.sinonimos.length > 0 ? `
+                                <span class="title-label">Sinónimos</span>
+                                ${item.sinonimos.map(t => `<span class="title-syn">• ${t}</span>`).join("")}
+                            ` : ""}
+                        </td>
+                        <td><span class="badge ${item.demografiaClase}">${item.demografia}</span></td>
+                        <td><span class="badge ${item.tipoClase}">${item.tipo}</span></td>
                         <td>${item.progreso}</td>
                     </tr>
                 `).join("")}
